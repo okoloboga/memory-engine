@@ -10,6 +10,7 @@ from .store import save_atoms, save_embeddings
 from .embed import embed_texts
 from .validator import validate_atoms_sources
 from .weekly import build_weekly_markdown, save_weekly
+from .retrieval import semantic_rank
 
 app = typer.Typer(help="Memory Engine CLI")
 
@@ -56,28 +57,56 @@ def ingest(path: str, extract: bool = typer.Option(True, help="Run LLM extractio
 
 @app.command()
 def query(text: str, top_k: int = 5):
-    """Simple retrieval command over extracted atoms."""
+    """Hybrid-lite retrieval: lexical + semantic (if embeddings available)."""
     atoms_path = Path("data/runtime/atoms.json")
     if not atoms_path.exists():
         print("No atoms found. Run ingest first.")
         raise typer.Exit(code=1)
 
     atoms = json.loads(atoms_path.read_text(encoding="utf-8"))
+    atoms_by_id = {a["id"]: a for a in atoms if "id" in a}
     q = text.lower().strip()
 
-    scored = []
+    # lexical branch
+    lexical = []
     for a in atoms:
         hay = f"{a.get('summary', '')} {' '.join(a.get('tags', []))}".lower()
         score = sum(1 for token in q.split() if token in hay)
         if score > 0:
-            scored.append((score, a))
+            lexical.append((float(score), a))
 
-    scored.sort(key=lambda x: x[0], reverse=True)
-    for score, a in scored[:top_k]:
-        print(f"- ({score}) [{a['type']}] {a['summary']} [src: {a['source_file']}:{a['source_line_start']}-{a['source_line_end']}]")
+    lexical.sort(key=lambda x: x[0], reverse=True)
 
-    if not scored:
-        print("No lexical hits yet. (semantic retrieval next)")
+    # semantic branch
+    semantic: list[tuple[float, dict]] = []
+    emb_path = Path("data/runtime/embeddings.json")
+    try:
+        if emb_path.exists():
+            qv = embed_texts([text])
+            if qv:
+                emb_rows = json.loads(emb_path.read_text(encoding="utf-8"))
+                semantic = semantic_rank(qv[0], emb_rows, atoms_by_id, top_k=top_k)
+    except Exception as e:
+        print(f"[yellow]semantic warning[/yellow] {e}")
+
+    # merge (simple dedup by id, keep best score)
+    merged: dict[str, tuple[float, dict, str]] = {}
+    for s, a in lexical:
+        merged[a["id"]] = (s, a, "lex")
+    for s, a in semantic:
+        prev = merged.get(a["id"])
+        if not prev or s > prev[0]:
+            merged[a["id"]] = (s, a, "sem")
+
+    ranked = sorted(merged.values(), key=lambda x: x[0], reverse=True)[:top_k]
+    for score, a, mode in ranked:
+        print(
+            f"- ({score:.3f},{mode}) [{a['type']}] {a['summary']} "
+            f"[src: {a['source_file']}:{a['source_line_start']}-{a['source_line_end']}]"
+        )
+
+    if not ranked:
+        print("No hits yet. Run ingest with extraction first.")
 
 
 @app.command()
