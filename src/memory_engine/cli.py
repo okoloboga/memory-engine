@@ -8,6 +8,8 @@ from .config import settings
 from .extractor import extract_atoms
 from .store import save_atoms, save_embeddings
 from .embed import embed_texts
+from .validator import validate_atoms_sources
+from .weekly import build_weekly_markdown, save_weekly
 
 app = typer.Typer(help="Memory Engine CLI")
 
@@ -35,6 +37,14 @@ def ingest(path: str, extract: bool = typer.Option(True, help="Run LLM extractio
                 print(f"[yellow]extract warning[/yellow] {chunk.file}:{chunk.line_start}-{chunk.line_end} -> {e}")
         atoms_path = save_atoms(atoms, out_dir=str(out_dir))
         print(f"[cyan]Atoms[/cyan]: {len(atoms)} -> {atoms_path}")
+
+        issues = validate_atoms_sources(atoms)
+        if issues:
+            print(f"[yellow]Validation issues[/yellow]: {len(issues)}")
+            for i in issues[:10]:
+                print(f"  - {i.atom_id}: {i.issue}")
+        else:
+            print("[green]Validation[/green]: all atoms grounded to sources")
 
         if embed and atoms:
             vectors = embed_texts([a["summary"] for a in atoms])
@@ -79,14 +89,16 @@ def weekly(limit: int = 10):
         raise typer.Exit(code=1)
 
     atoms = json.loads(atoms_path.read_text(encoding="utf-8"))
-    ranked = sorted(atoms, key=lambda a: a.get("confidence", 0), reverse=True)[:limit]
+    issues = validate_atoms_sources(atoms)
+    if issues:
+        bad = {i.atom_id for i in issues}
+        atoms = [a for a in atoms if a.get("id") not in bad]
+        print(f"Filtered out {len(bad)} ungrounded atoms before weekly")
 
-    print("# Weekly Summary (draft)")
-    for a in ranked:
-        print(
-            f"- [{a['type']}] {a['summary']} "
-            f"[src: {a['source_file']}:{a['source_line_start']}-{a['source_line_end']}, conf: {a.get('confidence', 0):.2f}]"
-        )
+    md = build_weekly_markdown(atoms, limit=limit)
+    print(md)
+    path = save_weekly(md)
+    print(f"Saved weekly -> {path}")
 
     print(f"\nConfigured extraction model: {settings.extraction_model}")
     print(f"Configured embedding model: {settings.embed_model}")
