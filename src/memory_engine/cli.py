@@ -10,7 +10,7 @@ from .store import save_atoms, save_embeddings
 from .embed import embed_texts
 from .validator import validate_atoms_sources
 from .weekly import build_weekly_markdown, save_weekly
-from .retrieval import semantic_rank
+from .retrieval import semantic_rank, hybrid_score, dedup_key
 
 app = typer.Typer(help="Memory Engine CLI")
 
@@ -89,21 +89,41 @@ def query(text: str, top_k: int = 5):
     except Exception as e:
         print(f"[yellow]semantic warning[/yellow] {e}")
 
-    # merge (simple dedup by id, keep best score)
-    merged: dict[str, tuple[float, dict, str]] = {}
+    # merge + hybrid score + content dedup
+    merged: dict[str, tuple[float | None, float | None, dict, str]] = {}
     for s, a in lexical:
-        merged[a["id"]] = (s, a, "lex")
+        merged[a["id"]] = (s, None, a, "lex")
     for s, a in semantic:
         prev = merged.get(a["id"])
-        if not prev or s > prev[0]:
-            merged[a["id"]] = (s, a, "sem")
+        if prev:
+            merged[a["id"]] = (prev[0], s, a, "hybrid")
+        else:
+            merged[a["id"]] = (None, s, a, "sem")
 
-    ranked = sorted(merged.values(), key=lambda x: x[0], reverse=True)[:top_k]
-    for score, a, mode in ranked:
+    rows: list[tuple[float, dict, str]] = []
+    for lex_s, sem_s, atom, mode in merged.values():
+        rows.append((hybrid_score(lex_s, sem_s), atom, mode))
+
+    rows.sort(key=lambda x: x[0], reverse=True)
+
+    deduped: list[tuple[float, dict, str]] = []
+    seen = set()
+    for score, atom, mode in rows:
+        key = dedup_key(atom)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append((score, atom, mode))
+        if len(deduped) >= top_k:
+            break
+
+    for score, a, mode in deduped:
         print(
             f"- ({score:.3f},{mode}) [{a['type']}] {a['summary']} "
             f"[src: {a['source_file']}:{a['source_line_start']}-{a['source_line_end']}]"
         )
+
+    ranked = deduped
 
     if not ranked:
         print("No hits yet. Run ingest with extraction first.")

@@ -3,12 +3,23 @@ from pathlib import Path
 
 
 def build_weekly_markdown(atoms: list[dict], limit: int = 10) -> str:
-    ranked = sorted(atoms, key=lambda a: a.get("confidence", 0), reverse=True)[:limit]
+    ranked = sorted(atoms, key=lambda a: (a.get("confidence", 0), a.get("type") in {"commitment", "blocker"}), reverse=True)
+
+    deduped = []
+    seen = set()
+    for a in ranked:
+        key = f"{a.get('type','')}::{(a.get('summary') or '').strip().lower()}"
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(a)
+        if len(deduped) >= limit:
+            break
     now = datetime.now(timezone.utc)
     year, week, _ = now.isocalendar()
 
     lines = [f"# Weekly Summary: {year}-W{week:02d}", ""]
-    for a in ranked:
+    for a in deduped:
         lines.append(
             f"- [{a['type']}] {a['summary']} "
             f"[src: {a['source_file']}:{a['source_line_start']}-{a['source_line_end']}, conf: {a.get('confidence', 0):.2f}]"
