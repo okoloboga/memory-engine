@@ -18,7 +18,7 @@ app = typer.Typer(help="Memory Engine CLI")
 
 
 @app.command()
-def ingest(path: str, extract: bool = typer.Option(True, help="Run LLM extraction"), embed: bool = typer.Option(True, help="Build embeddings")):
+def ingest(path: str, extract: bool = typer.Option(True, help="Run LLM extraction"), embed: bool = typer.Option(True, help="Build embeddings"), replace_source: bool = typer.Option(True, help="Replace prior atoms from same source files")):
     """Parse markdown file/folder into chunks; optionally extract atoms + embeddings."""
     p = Path(path)
     files = [p] if p.is_file() else sorted(p.rglob("*.md"))
@@ -33,14 +33,20 @@ def ingest(path: str, extract: bool = typer.Option(True, help="Run LLM extractio
 
     atoms: list[dict] = []
     issues = []
+    ingest_stats = None
     if extract:
         for chunk in chunks:
             try:
                 atoms.extend(extract_atoms(chunk))
             except Exception as e:
                 print(f"[yellow]extract warning[/yellow] {chunk.file}:{chunk.line_start}-{chunk.line_end} -> {e}")
-        atoms_path = save_atoms(atoms, out_dir=str(out_dir))
+        sources = {str(f) for f in files} if replace_source else None
+        atoms_path, ingest_stats = save_atoms(atoms, out_dir=str(out_dir), replace_sources=sources)
         print(f"[cyan]Atoms[/cyan]: {len(atoms)} -> {atoms_path}")
+        if ingest_stats:
+            print(
+                f"[cyan]Ingest stats[/cyan]: added={ingest_stats['added']} removed={ingest_stats['removed']} total={ingest_stats['total']}"
+            )
 
         issues = validate_atoms_sources(atoms)
         if issues:
