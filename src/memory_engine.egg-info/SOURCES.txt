@@ -3,8 +3,11 @@ pyproject.toml
 src/memory_engine/__init__.py
 src/memory_engine/cli.py
 src/memory_engine/config.py
+src/memory_engine/embed.py
+src/memory_engine/extractor.py
 src/memory_engine/models.py
 src/memory_engine/parser.py
+src/memory_engine/store.py
 src/memory_engine.egg-info/PKG-INFO
 src/memory_engine.egg-info/SOURCES.txt
 src/memory_engine.egg-info/dependency_links.txt
