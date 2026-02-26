@@ -16,6 +16,11 @@ dependencies = [
   "rich>=13.7",
 ]
 
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
 [project.scripts]
 memory = "memory_engine.cli:app"
 

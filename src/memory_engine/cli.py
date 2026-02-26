@@ -11,6 +11,7 @@ from .embed import embed_texts
 from .validator import validate_atoms_sources
 from .weekly import build_weekly_markdown, save_weekly
 from .retrieval import semantic_rank, hybrid_score, dedup_key
+from .claimcheck import claim_check_markdown
 
 app = typer.Typer(help="Memory Engine CLI")
 
@@ -145,9 +146,11 @@ def weekly(limit: int = 10):
         print(f"Filtered out {len(bad)} ungrounded atoms before weekly")
 
     md = build_weekly_markdown(atoms, limit=limit)
-    print(md)
-    path = save_weekly(md)
+    checked_md, check = claim_check_markdown(md, atoms)
+    print(checked_md)
+    path = save_weekly(checked_md)
     print(f"Saved weekly -> {path}")
+    print(f"ClaimCheck verified={check.verified}/{check.total}, dropped={check.dropped}")
 
     print(f"\nConfigured extraction model: {settings.extraction_model}")
     print(f"Configured embedding model: {settings.embed_model}")
