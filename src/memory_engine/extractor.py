@@ -66,12 +66,21 @@ def extract_atoms(chunk: Chunk) -> list[dict]:
     parsed = ExtractionResult.model_validate(json.loads(content))
 
     atoms: list[dict] = []
+    seen = set()
     for i, atom in enumerate(parsed.atoms):
+        summary = " ".join((atom.summary or "").split()).strip()
+        if len(summary) < 8:
+            continue
+        dedup = f"{atom.type}::{summary.lower()}"
+        if dedup in seen:
+            continue
+        seen.add(dedup)
+
         atoms.append(
             {
-                "id": _atom_id(chunk, i, atom.summary),
+                "id": _atom_id(chunk, i, summary),
                 "type": atom.type,
-                "summary": atom.summary,
+                "summary": summary,
                 "source_file": chunk.file,
                 "source_line_start": chunk.line_start,
                 "source_line_end": chunk.line_end,

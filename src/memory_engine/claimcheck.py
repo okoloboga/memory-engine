@@ -29,11 +29,13 @@ def claim_check_markdown(markdown_text: str, atoms: list[dict]) -> tuple[str, Cl
             out.append(ln)
             continue
 
-        total += 1
         marker = "[src: "
         if marker not in ln:
-            dropped += 1
+            # non-claim bullet (e.g., dashboard line) - keep as-is
+            out.append(ln)
             continue
+
+        total += 1
 
         try:
             src_part = ln.split(marker, 1)[1].split(",", 1)[0].strip()

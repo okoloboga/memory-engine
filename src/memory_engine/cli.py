@@ -12,6 +12,7 @@ from .validator import validate_atoms_sources
 from .weekly import build_weekly_markdown, save_weekly
 from .retrieval import semantic_rank, hybrid_score, dedup_key
 from .claimcheck import claim_check_markdown
+from .quality import quality_dashboard
 
 app = typer.Typer(help="Memory Engine CLI")
 
@@ -31,6 +32,7 @@ def ingest(path: str, extract: bool = typer.Option(True, help="Run LLM extractio
     out_file.write_text(json.dumps([c.model_dump() for c in chunks], ensure_ascii=False, indent=2), encoding="utf-8")
 
     atoms: list[dict] = []
+    issues = []
     if extract:
         for chunk in chunks:
             try:
@@ -147,8 +149,11 @@ def weekly(limit: int = 10):
 
     md = build_weekly_markdown(atoms, limit=limit)
     checked_md, check = claim_check_markdown(md, atoms)
-    print(checked_md)
-    path = save_weekly(checked_md)
+    dash = quality_dashboard(atoms, issues, check.total, check.verified, check.dropped)
+    final_md = build_weekly_markdown(atoms, limit=limit, appendix=dash)
+    final_md, check = claim_check_markdown(final_md, atoms)
+    print(final_md)
+    path = save_weekly(final_md)
     print(f"Saved weekly -> {path}")
     print(f"ClaimCheck verified={check.verified}/{check.total}, dropped={check.dropped}")
 

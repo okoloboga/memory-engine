@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-def build_weekly_markdown(atoms: list[dict], limit: int = 10) -> str:
+def build_weekly_markdown(atoms: list[dict], limit: int = 10, appendix: str | None = None) -> str:
     ranked = sorted(atoms, key=lambda a: (a.get("confidence", 0), a.get("type") in {"commitment", "blocker"}), reverse=True)
 
     deduped = []
@@ -25,6 +25,9 @@ def build_weekly_markdown(atoms: list[dict], limit: int = 10) -> str:
             f"[src: {a['source_file']}:{a['source_line_start']}-{a['source_line_end']}, conf: {a.get('confidence', 0):.2f}]"
         )
     lines.append("")
+    if appendix:
+        lines.append(appendix)
+        lines.append("")
     return "\n".join(lines)
 
 
